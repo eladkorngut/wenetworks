@@ -38,6 +38,17 @@ def intalize_lam_graph(G, N, beta_sus,beta_inf):
     return G
 
 
+def intalize_group_graph(G, N, beta_sus,beta_inf):
+    nx.set_node_attributes(G, False, 'infected')
+    nx.set_node_attributes(G, 0, 'contact_rate')
+    nx.set_node_attributes(G, 0, 'spread_rate')
+    nx.set_node_attributes(G, 0, 'group')
+    for i in range(N):
+        G.nodes[i]['contact_rate'] = beta_sus[i]
+        G.nodes[i]['spread_rate'] = beta_inf[i]
+    return G
+
+
 def set_graph_attriubute_DiGraph(G):
     nx.set_node_attributes(G, False, 'infected')
     nx.set_node_attributes(G, 0, 'contact_rate')
@@ -65,6 +76,35 @@ def inatlize_inf_graph(G,Num_inf,N,Alpha,Beta):
                     Rates[i] = Rates[i] +Beta*(G.nodes[i]['contact_rate'] * G.nodes[l]['spread_rate'])
     R_tot = np.sum(Rates)
     return R_tot, Rates
+
+
+def inatlize_group_inf_graph(G,Num_inf,N,Alpha,Beta):
+    groups =[]
+    count=0
+    for i in rand.sample(range(0, N - 1), Num_inf):
+        G.nodes[i]['infected'] = True
+    Rates = np.zeros(N)
+    group_num_inf = []
+    for l in range(N):
+        exist_before = False
+        for j in range(len(groups)):
+            if G.nodes[l]['spread_rate'] == groups[j]:
+                exist_before = True
+                G.nodes[l]['group'] = j
+                # group_num_inf[j] = group_num_inf[j] + 1
+                break
+        if exist_before == False:
+            groups.append(G.nodes[l]['spread_rate'])
+            group_num_inf.append(0)
+            G.nodes[l]['group'] = count
+            count = count + 1
+        if G.nodes[l]['infected'] == True:
+            Rates[l] = Alpha
+            group_num_inf[G.nodes[l]['group']] = group_num_inf[G.nodes[l]['group']] +1
+            for i in G[l]:
+                if (G.nodes[i]['infected'] == False):
+                    Rates[i] = Rates[i] +Beta*(G.nodes[i]['contact_rate'] * G.nodes[l]['spread_rate'])
+    return group_num_inf, Rates
 
 # def inatlize_quarntine_graph(G,N,Alpha,Beta):
 #     Rates = np.zeros(N)
@@ -218,6 +258,24 @@ def bi_beta_anti_correlated(N,epsilon_lam,epsilon_mu,l):
     a=[]
     for x in b[0]:
         a.append(1+epsilon_mu) if x<1.0 else a.append(1-epsilon_mu)
+    a=np.array(a)
+    return b[0],np.array(a)
+
+
+def bi_beta_any(N,epsilon_lam,epsilon_mu,l):
+    if epsilon_lam==0.0:
+        a=np.concatenate((np.full((1,int(N/2)),l*(1+epsilon_mu)),np.full((1,int(N/2)),l*(1-epsilon_mu))),axis=1)
+        np.random.shuffle(a[0])
+        return l*np.ones(N),a[0]
+    b=np.concatenate((np.full((1,int(N/2)),l*(1+epsilon_lam)),np.full((1,int(N/2)),l*(1-epsilon_lam))),axis=1)
+    np.random.shuffle(b[0])
+    a=[]
+    if epsilon_lam*epsilon_mu<0:
+        for x in b[0]:
+            a.append(1+epsilon_mu) if x<1.0 else a.append(1-epsilon_mu)
+    else:
+        for x in b[0]:
+            a.append(1 + epsilon_mu) if x > 1.0 else a.append(1 - epsilon_mu)
     a=np.array(a)
     return b[0],np.array(a)
 

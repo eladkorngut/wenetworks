@@ -3,36 +3,35 @@ import networkx as nx
 import numpy as np
 import netinithomo
 import rand_networks
-import rand_weighted_networks
 import csv
 import json
 import pickle
 
 if __name__ == '__main__':
-    Epsilon_sus = [0.1]
-    Epsilon_inf = [-0.2]
+    Epsilon_sus = [0.3]
+    Epsilon_inf = [0.3]
     # Epsilon=[0.02]
     epsilon = 0.1
     eps_din,eps_dout = 0.0,0.0
     # eps_sus,eps_lam = 0.3,-0.3
-    N = 2000
-    k = 200
+    N = 300
+    k = 100
     x = 0.2
     Num_inf = int(x * N)
     Alpha = 1.0
     susceptibility = 'bimodal'
     infectability = 'bimodal'
     directed_model='uniform_c'
-    prog = 'mcr' #can be either 'i' for the inatilization and reaching eq state or 'r' for running and recording fluc
-    Lam = 0.2
-    Time_limit = 1100
+    prog = 'rwe' #can be either 'i' for the inatilization and reaching eq state or 'r' for running and recording fluc
+    Lam = 1.3
+    Time_limit = 50000
     Start_recording_time = 100.0
     Beta_avg = Alpha*Lam / k
     Num_different_networks= 1
     Num_inital_conditions= 1
     bank = 1000000
     parts = 1
-    foldername ='syncro_N2000_k200_alpha10_startime100_timelimit1100_dt001_eps0_lam02'
+    foldername ='bimodal_group_N300_k100_lam13_timelimit50000_epslam03_epssus03'
     graphname  = 'GNull'
     count = 0
     susceptibility_avg = 1.0
@@ -46,7 +45,7 @@ if __name__ == '__main__':
 
     if prog == 'i' or prog=='bi' or prog == 'si' or prog=='e' or prog=='ec' or prog=='ac' or prog=='r' or prog=='ri' or\
             prog=='g' or prog=='rg' or prog=='bd' or prog=='co' or prog=='cr' or prog=='q' or prog=='wn' or \
-            prog=='wnr' or prog=='au' or prog=='f' or prog=='an' or prog=='br' or prog=='mcr' or prog=='mc'or prog=='mcer':
+            prog=='wnr' or prog=='au' or prog=='f' or prog=='an' or prog=='br' or prog=='mcr' or prog=='mc' or prog=='mcer' or prog=='rwe':
         os.mkdir(foldername)
     dir_path = os.path.dirname(os.path.realpath(__file__))
     os.chdir(foldername)
@@ -378,22 +377,6 @@ if __name__ == '__main__':
                 os.system(dir_path + '/slurm.serjob python3 ' + dir_path + '/gillespierunhomo.py '+str(prog) + ' ' +
                           str(Alpha) + ' ' + str(bank) + ' ' + str(outfile)+ ' ' + str(infile) + ' ' +
                           str(Num_inital_conditions)+ ' ' + str(Num_inf) + ' ' +str(n)+ ' ' +str(Beta)+ ' ' +str(Start_recording_time)+ ' ' +str(Time_limit))
-    # elif prog =='mcr':
-    #     # Run a markov chain simulation of the infection treating the infection of two nodes through probaility with
-    #     # (1-lam)^m where m is the number of infected neighbors, and assuming that the rates are time independent
-    #     Beta = Beta_avg / (1 + eps_din * eps_dout)
-    #     d1_in, d1_out, d2_in, d2_out = int(k * (1 - eps_din)), int(k * (1 - eps_dout)), int(k * (1 + eps_din)), int(
-    #         k * (1 + eps_dout))
-    #     for n in range(Num_inital_conditions):
-    #         G = rand_networks.random_bimodal_directed_graph(d1_in, d1_out, d2_in, d2_out, N)
-    #         G = netinithomo.set_graph_attriubute_markov(G)
-    #         infile = graphname + '_' + str(epsilon).replace('.', '') + '_' + str(n)+'.pickle'
-    #         nx.write_gpickle(G, infile)
-    #         outfile ='o_eps' + str(np.abs(epsilon)).replace('.', '')
-    #         for p in range(parts):
-    #             os.system(dir_path + '/slurm.serjob python3 ' + dir_path + '/gillespierunhomo.py '+str(prog) + ' ' +
-    #                       str(Alpha) + ' ' + str(bank) + ' ' + str(outfile)+ ' ' + str(infile) + ' ' + str(Num_inital_conditions)+
-    #                       ' ' + str(Num_inf) + ' ' +str(n)+ ' ' +str(Beta)+ ' ' +str(Start_recording_time)+ ' ' +str(Time_limit))
     elif prog =='mcr':
         # Run a markov chain simulation of the infection treating the infection of two nodes through probaility with
         # (1-lam)^m where m is the number of infected neighbors, and assuming that the rates are time independent
@@ -436,3 +419,17 @@ if __name__ == '__main__':
                           str(Alpha) + ' ' + str(bank) + ' ' + str(outfile)+ ' ' + str(infile) + ' ' + str(Num_inital_conditions)+
                           ' ' + str(Num_inf) + ' ' +str(n)+ ' ' +str(Beta)+ ' ' +str(Start_recording_time)
                           + ' ' +str(Time_limit)+ ' ' +str(dt_discrite))
+    elif prog=='rwe':
+        for epsilon_sus,epsilon_inf in zip(Epsilon_sus,Epsilon_inf):
+            Beta=Beta_avg/(1+epsilon_sus*epsilon_inf)
+            for n in range(Num_different_networks):
+                beta_inf,beta_sus=netinithomo.bi_beta_any(N,epsilon_inf,epsilon_sus,1.0)
+                G = nx.random_regular_graph(k, N)
+                # G = nx.complete_graph(N)
+                G = netinithomo.intalize_group_graph(G, N, beta_sus,beta_inf)
+                infile = graphname + '_' + str(epsilon_sus).replace('.', '') + '_' + str(n)+'.pickle'
+                nx.write_gpickle(G, infile)
+                outfile = 'o_eps_sus' + str(np.abs(epsilon_sus)).replace('.', '') + 'eps_inf' + str(np.abs(epsilon_inf)).replace('.', '')
+                for p in range(parts):
+                    os.system(dir_path + '/slurm.serjob python3 ' + dir_path + '/gillespierunhomo.py '+str(prog) + ' ' +
+                              str(Alpha) + ' ' + str(Time_limit)+ ' ' + str(bank) + ' ' + str(outfile)+ ' ' + str(infile) + ' ' + str(Num_inital_conditions)+ ' ' + str(Num_inf) + ' ' +str(n)+ ' ' +str(Beta))

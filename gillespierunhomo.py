@@ -6,7 +6,6 @@ import csv
 import pickle
 import sys
 import rand_networks
-import rand_weighted_networks
 
 import matplotlib.pyplot as plt
 
@@ -335,6 +334,85 @@ def fluctuation_run_no_decay(Alpha,Time_limit,bank,outfile,infile,runs,Num_inf,n
             writer.writerows(l)
         f.close()
     return 0
+
+
+
+def run_no_decay_export_memory(Alpha,Time_limit,bank,outfile,infile,runs,Num_inf,network_number,Beta):
+    G=nx.read_gpickle(infile)
+    seed_nodes= Num_inf
+    for run_loop_counter in range(runs):
+        T = []
+        I = []
+        runs_csv=[]
+        runs_csv.append(run_loop_counter)
+        Total_time = 0.0
+        T.append(Total_time)
+        count = 0
+        Num_inf = seed_nodes
+        r = np.random.uniform(0, 1, (bank, 2))
+        for l in range(G.number_of_nodes()):
+            G.nodes[l]['infected'] = False
+        group_num_inf, Rates = netinithomo.inatlize_group_inf_graph(G,Num_inf,G.number_of_nodes(),Alpha,Beta)
+        group_all_num_inf = []
+        group_all_num_inf.append(group_num_inf)
+        net_num = []
+        I.append(Num_inf)
+        net_num.append(network_number)
+
+        ######################
+        # Main Gillespie Loop
+        ######################
+        while Num_inf > 0 and Total_time<Time_limit:
+            R_norm = np.cumsum(Rates)
+            r_pos = R_norm[-1] * r[count, 1]
+            person = bisect.bisect_left(R_norm, r_pos)
+            tau= np.log(1 / r[count, 0]) / R_norm[-1]
+            Total_time = Total_time + tau
+            new_group_num_inf = group_all_num_inf[-1].copy()
+            try:
+                if G.nodes[person]['infected'] == True:
+                  pass
+            except:
+                  print('Accessing G.noes[person][infected] failed value of person is ',person)
+                  if person == G.number_of_nodes():
+                      person =G.number_of_nodes()-1
+
+            if G.nodes[person]['infected'] == True and Num_inf>1:
+                Num_inf = Num_inf - 1
+                new_group_num_inf[G.nodes[person]['group']] = new_group_num_inf[G.nodes[person]['group']] - 1
+                Rates[person] = 0.0
+                for Neighbor in G[person]:
+                    if G.nodes[Neighbor]['infected'] == False:
+                        Rates[Neighbor] = Rates[Neighbor] - Beta*(G.nodes[Neighbor]['contact_rate'] * G.nodes[person]['spread_rate'])
+                    else:
+                        Rates[person] = Rates[person] + Beta*(G.nodes[person]['contact_rate'] * G.nodes[Neighbor]['spread_rate'])
+                G.nodes[person]['infected'] = False
+            elif G.nodes[person]['infected'] == False :
+                Num_inf = Num_inf + 1
+                new_group_num_inf[G.nodes[person]['group']] = new_group_num_inf[G.nodes[person]['group']] + 1
+                for Neighbor in G[person]:
+                    if G.nodes[Neighbor]['infected'] == False:
+                        Rates[Neighbor] = Rates[Neighbor] + Beta*(G.nodes[Neighbor]['contact_rate'] * G.nodes[person]['spread_rate'])
+                Rates[person] = Alpha
+                G.nodes[person]['infected'] = True
+            count = count + 1
+            group_all_num_inf.append(new_group_num_inf)
+            T.append(Total_time)
+            I.append(Num_inf)
+            if count >= bank:
+                r = np.random.uniform(0, 1, (bank, 2))
+                count = 0
+        with open('time_'+ outfile + '.npy', 'wb') as f:
+            np.save(f, np.array(T))
+        f.close()
+        with open('infected_'+ outfile + '.npy', 'wb') as f:
+            np.save(f, np.array(I))
+        with open('group_inf_' + outfile + '.npy', 'wb') as f:
+            np.save(f, np.array(group_all_num_inf))
+    return 0
+
+
+
 
 def fluctuation_run_autocorrelation_hetro_rates(Alpha,Time_limit,bank,outfile,infile,runs,Num_inf,time_diff,Beta,start_recording_time):
     G=nx.read_gpickle(infile)
@@ -1249,19 +1327,19 @@ def actasmain():
     Epsilon_sus = [0.0]
     Epsilon_inf = [0.0]
     Epsilon=[0.0]
-    N = 500
-    k = 200
+    N = 300
+    k = 100
     x = 0.2
     eps_din,eps_dout = 0.0,0.0
-    eps_sus,eps_lam = 0.0,0.0
+    eps_sus,eps_lam = 0.1,0.1
     Num_inf = int(x * N)
     Alpha = 1.0
     susceptibility = 'bimodal'
     infectability = 'bimodal'
     directed_model='gauss_c'
     prog = 'q' #can be either 'i' for the inatilization and reaching eq state or 'r' for running and recording fluc
-    Lam = 1.5
-    Time_limit = 200
+    Lam = 1.3
+    Time_limit = 10000
     Start_recording_time = 0.0
     Beta_avg =Alpha* Lam / k
     Num_different_networks= 1
@@ -1286,16 +1364,18 @@ def actasmain():
     dt_discrite = 0.01
 
 
-    # G = nx.random_regular_graph(k, N)
+    G = nx.random_regular_graph(k, N)
     # G = nx.complete_graph(N)
     # beta_inf, beta_sus = netinithomo.general_beta(N, eps_lam, eps_sus, directed_model, k)
     # beta_inf, beta_sus = netinithomo.bi_beta_correlated(N, eps_lam, eps_sus, 1.0)
+    beta_inf, beta_sus = netinithomo.bi_beta_any(N, eps_lam, eps_sus, 1.0)
+    G = netinithomo.intalize_group_graph(G, N, beta_sus, beta_inf)
     # G = netinithomo.intalize_lam_graph(G, N, beta_sus, beta_inf)
-    d1_in, d1_out, d2_in, d2_out = int(k * (1 - eps_din)), int(k * (1 - eps_dout)), int(k * (1 + eps_din)), int(
-        k * (1 + eps_dout))
-    G = rand_networks.random_bimodal_directed_graph(d1_in, d1_out, d2_in, d2_out, N)
-    G = netinithomo.set_graph_attriubute_markov(G)
-    # G = netinithomo.set_graph_attriubute_DiGraph(G)
+    # d1_in, d1_out, d2_in, d2_out = int(k * (1 - eps_din)), int(k * (1 - eps_dout)), int(k * (1 + eps_din)), int(
+    #     k * (1 + eps_dout))
+    # G = rand_networks.random_bimodal_directed_graph(d1_in, d1_out, d2_in, d2_out, N)
+    # G = netinithomo.set_graph_attriubute_markov(G)
+    # # G = netinithomo.set_graph_attriubute_DiGraph(G)
 
     # choose_beta = lambda net_dist, avg, epsilon: np.random.normal(avg, epsilon * avg, N) \
     #     if net_dist == 'gauss' else np.random.gamma((avg / epsilon) ** 2, epsilon ** 2 / avg, N) \
@@ -1323,7 +1403,7 @@ def actasmain():
     # G = netinithomo.set_graph_attriubute_DiGraph(G)
     infile = graphname + '_' + str(eps_din).replace('.', '') + '_' + str(n) + '.pickle'
     nx.write_gpickle(G, infile)
-    outfile = 'o_eps_in' + str(np.abs(eps_din)).replace('.', '') + 'eps_dout' + str(np.abs(eps_dout)).replace('.', '')
+    outfile = 'o_eps_sus' + str(np.abs(eps_sus)).replace('.', '') + 'eps_inf' + str(np.abs(eps_lam)).replace('.', '')
     # k_avg_graph, eps_in_graph, eps_out_graph = rand_weighted_networks.weighted_epsilon(G)
     # Beta_graph = Lam / k_avg_graph
     # Beta = Beta_graph / (1 + np.sign(eps_din) * eps_in_graph * np.sign(eps_dout) * eps_out_graph)
@@ -1333,7 +1413,8 @@ def actasmain():
     #                                           Beta)
     # fluctuation_weighted_run_infected_no_decay(Alpha,bank,outfile,infile,Num_inital_conditions,Num_inf,n,Beta,Start_recording_time,Time_limit)
     # fluctuation_run_autocorrelation_hetro_rates(Alpha,Time_limit,bank,outfile,infile,Num_inital_conditions,Num_inf,auto_correlation_time_diff,Beta,Start_recording_time)
-    run_markov_chain_bimodal_network(Alpha,bank,outfile,infile,Num_inital_conditions,Num_inf,n,Beta,Start_recording_time,Time_limit,dt_discrite)
+    # run_markov_chain_bimodal_network(Alpha,bank,outfile,infile,Num_inital_conditions,Num_inf,n,Beta,Start_recording_time,Time_limit,dt_discrite)
+    run_no_decay_export_memory(Alpha, Time_limit, bank, outfile, infile, Num_inital_conditions, Num_inf, n, Beta)
     # markov_extinction_bimodal_network(Alpha,bank,outfile,infile,Num_inital_conditions,Num_inf,n,Beta)
     # nx.write_gpickle(G, graphname)
     # infile = graphname + '_' + str(epsilon).replace('.', '') + '_' + str(n)+'.pickle'
@@ -1413,4 +1494,7 @@ if __name__ == '__main__':
              markov_extinction_bimodal_network(float(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5],
                                               int(sys.argv[6]), int(sys.argv[7]), int(sys.argv[8]),
                                               float(sys.argv[9]))
-
+         elif sys.argv[1] == 'rwe':
+            # run and record the number of infected in each group without extinction being possible
+            run_no_decay_export_memory(float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6],
+                                       int(sys.argv[7]),int(sys.argv[8]),int(sys.argv[9]),float(sys.argv[10]))
